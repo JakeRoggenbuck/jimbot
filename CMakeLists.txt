@@ -10,5 +10,5 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 file(GLOB_RECURSE SOURCES src/*.c)
 
 add_executable(jimbot ${SOURCES})
-# target_link_libraries(jimbot m)
+target_link_libraries(jimbot sqlite3)
 target_include_directories(jimbot PRIVATE src)

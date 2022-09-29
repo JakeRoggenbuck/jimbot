@@ -1,17 +1,38 @@
 #include <sqlite3.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <stdbool.h>
 
 bool file_exists(char *filename) {
     struct stat buffer;
     return (stat(filename, &buffer) == 0);
 }
 
+static int callback(void *not_used, int argc, char **argv, char **az_col_name) {
+    for (int i = 0; i < argc; i++) {
+        printf("%s = %s\n", az_col_name[i], argv[i] ? argv[i] : "NULL");
+    }
+
+    printf("\n");
+    return 0;
+}
+
+int create_database_table(sqlite3 *db) {
+    int rc;
+    char *error_message;
+    char *sql = "CREATE TABLE PRS("
+                "ID INT PRIMARY KEY     NOT NULL,"
+                "NAME           TEXT    NOT NULL,"
+                "AGE            INT     NOT NULL,"
+                "ADDRESS        CHAR(50),"
+                "SALARY         REAL );";
+
+    rc = sqlite3_exec(db, sql, callback, 0, &error_message);
+}
+
 int main() {
     sqlite3 *db;
     int rc;
-    char *zErrMsg = 0;
     char database_name[] = "test.db";
 
     bool exist_before_connect = file_exists(database_name);
@@ -19,9 +40,13 @@ int main() {
 
     if (rc) {
         printf("Can't open database: %s\n", sqlite3_errmsg(db));
-        return (0);
+        return 1;
     } else {
         printf("Opened database successfully\n");
+    }
+
+    if (!exist_before_connect) {
+        create_database_table(db);
     }
 
     sqlite3_close(db);

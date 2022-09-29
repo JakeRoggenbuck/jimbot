@@ -23,11 +23,26 @@ int create_database_table(sqlite3 *db) {
     char *sql = "CREATE TABLE PRS("
                 "ID INT PRIMARY KEY     NOT NULL,"
                 "NAME           TEXT    NOT NULL,"
-                "AGE            INT     NOT NULL,"
-                "ADDRESS        CHAR(50),"
-                "SALARY         REAL );";
+                "EXERCISE       TEXT	NOT NULL,"
+                "WEIGHT         REAL    NOT NULL,"
+                "REPS        	INT		NOT NULL);";
 
     rc = sqlite3_exec(db, sql, callback, 0, &error_message);
+    return !rc;
+}
+
+int add(char *name, char *exercise, double weight, int reps, sqlite3 *db) {
+    int rc;
+    char *error_message;
+    char sql[300];
+
+    sprintf(sql,
+            "INSERT INTO PRS (ID,NAME,EXERCISE,WEIGHT,REPS) VALUES"
+            "(0, '%s', '%s', %.2lf, %d);",
+            name, exercise, weight, reps);
+
+    rc = sqlite3_exec(db, sql, callback, 0, &error_message);
+    return !rc;
 }
 
 int main() {
@@ -42,11 +57,18 @@ int main() {
         printf("Can't open database: %s\n", sqlite3_errmsg(db));
         return 1;
     } else {
-        printf("Opened database successfully\n");
+        printf("Opened database successfully.\n");
     }
 
     if (!exist_before_connect) {
-        create_database_table(db);
+        if (!create_database_table(db)) {
+            printf("Could not create table.\n");
+            return 1;
+        }
+    }
+
+    if (!add("Jake", "Bench", 135, 10, db)) {
+        printf("Error adding to database.\n");
     }
 
     sqlite3_close(db);

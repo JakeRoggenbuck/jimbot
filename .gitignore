@@ -1,2 +1,5 @@
 cmake/
 test.db
+bot.log
+config.json
+http.log

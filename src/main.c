@@ -1,3 +1,6 @@
+#include <assert.h>
+#include <concord/discord.h>
+#include <concord/log.h>
 #include <sqlite3.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -117,6 +120,27 @@ int get(sqlite3 *db, struct PRS *prs, char *name) {
     return !rc;
 }
 
+void on_ready(struct discord *client, const struct discord_ready *event) {
+    (void)client;
+    log_info("Cog-Bot succesfully connected to Discord as %s#%s!",
+             event->user->username, event->user->discriminator);
+}
+
+void on_interaction(struct discord *client,
+                    const struct discord_interaction *event) {
+    if (event->type != DISCORD_INTERACTION_APPLICATION_COMMAND)
+        return; /* return if interaction isn't a slash command */
+
+    if (strcmp(event->data->name, "ping") == 0) {
+        struct discord_interaction_response params = {
+            .type = DISCORD_INTERACTION_CHANNEL_MESSAGE_WITH_SOURCE,
+            .data =
+                &(struct discord_interaction_callback_data){.content = "pong"}};
+        discord_create_interaction_response(client, event->id, event->token,
+                                            &params, NULL);
+    }
+}
+
 int main() {
     sqlite3 *db;
     int rc;
@@ -144,9 +168,14 @@ int main() {
     struct PRS prs;
     prs.index = 0;
 
-    add(db, "Jake", "Bench", 145, 34);
+    add(db, "Jake", "Squat", 245, 10);
     get(db, &prs, "Jake");
     print_prs(&prs);
+
+    struct discord *client = discord_config_init("config.json");
+    discord_set_on_ready(client, &on_ready);
+    discord_set_on_interaction_create(client, &on_interaction);
+    discord_run(client);
 
     sqlite3_close(db);
 

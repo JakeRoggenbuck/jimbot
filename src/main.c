@@ -16,8 +16,14 @@ struct PRS {
     int index;
 };
 
-void print(struct PR *pr) {
+void print_pr(struct PR *pr) {
     printf("%s %s %lf %d\n", pr->name, pr->exercise, pr->weight, pr->reps);
+}
+
+void print_prs(struct PRS *prs) {
+    for (int i = 0; i < prs->index; i++) {
+        print_pr(&prs->prs[i]);
+    }
 }
 
 bool file_exists(char *filename) {
@@ -57,7 +63,7 @@ int create_database_table(sqlite3 *db) {
     int rc;
     char *error_message;
     char *sql = "CREATE TABLE PRS("
-                "ID INT PRIMARY KEY     NOT NULL,"
+                "ID INT PRIMARY KEY,"
                 "NAME           TEXT    NOT NULL,"
                 "EXERCISE       TEXT	NOT NULL,"
                 "WEIGHT         REAL    NOT NULL,"
@@ -80,7 +86,7 @@ int add(sqlite3 *db, char *name, char *exercise, double weight, int reps) {
 
     sprintf(sql,
             "INSERT INTO PRS (ID,NAME,EXERCISE,WEIGHT,REPS) VALUES"
-            "(0, '%s', '%s', %.2lf, %d);",
+            "(NULL, '%s', '%s', %.2lf, %d);",
             name, exercise, weight, reps);
 
     rc = sqlite3_exec(db, sql, callback, 0, &error_message);
@@ -132,15 +138,15 @@ int main() {
             return 1;
         }
 
-        if (!add(db, "Jake", "Bench", 135, 10)) {
-            printf("Error adding to database.\n");
-        }
+        add(db, "Jake", "Bench", 135, 10);
     }
 
     struct PRS prs;
     prs.index = 0;
+
+    add(db, "Jake", "Bench", 145, 34);
     get(db, &prs, "Jake");
-	print(&prs.prs[0]);
+    print_prs(&prs);
 
     sqlite3_close(db);
 

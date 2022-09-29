@@ -1,6 +1,7 @@
 #include <sqlite3.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
 
 struct PR {
@@ -10,15 +11,32 @@ struct PR {
     int reps;
 };
 
+struct PRS {
+    struct PR prs[10];
+    int index;
+};
+
+void print(struct PR *pr) {
+    printf("%s %s %lf %d\n", pr->name, pr->exercise, pr->weight, pr->reps);
+}
+
 bool file_exists(char *filename) {
     struct stat buffer;
     return (stat(filename, &buffer) == 0);
 }
 
 static int get_callback(void *data, int argc, char **argv, char **az_col_name) {
-    struct PR *prs = (struct PR *)data;
-    struct PR new = {"Jake", "Squat", 245, 1};
-    prs[0] = new;
+    struct PRS *prs = (struct PRS *)data;
+
+    struct PR new;
+    strcpy(new.name, argv[1]);
+    strcpy(new.exercise, argv[2]);
+
+    sscanf(argv[3], "%lf", &new.weight);
+    sscanf(argv[4], "%d", &new.reps);
+
+    prs->prs[prs->index] = new;
+    prs->index++;
 
     return 0;
 }
@@ -75,7 +93,7 @@ int add(sqlite3 *db, char *name, char *exercise, double weight, int reps) {
     return !rc;
 }
 
-int get(sqlite3 *db, struct PR *prs, char *name) {
+int get(sqlite3 *db, struct PRS *prs, char *name) {
     int rc;
     char *error_message;
     char sql[300];
@@ -119,9 +137,10 @@ int main() {
         }
     }
 
-    struct PR pr[10];
-    get(db, pr, "Jake");
-    printf("%s", pr[0].exercise);
+    struct PRS prs;
+    prs.index = 0;
+    get(db, &prs, "Jake");
+	print(&prs.prs[0]);
 
     sqlite3_close(db);
 

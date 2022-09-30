@@ -7,6 +7,8 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#define GUILD_ID 709849079315955733
+
 struct PR {
     char name[100];
     char exercise[100];
@@ -121,9 +123,54 @@ int get(sqlite3 *db, struct PRS *prs, char *name) {
 }
 
 void on_ready(struct discord *client, const struct discord_ready *event) {
+    struct discord_create_guild_application_command params_1 = {
+        .name = "ping", .description = "Ping command!"};
+
+    discord_create_guild_application_command(client, event->application->id,
+                                             GUILD_ID, &params_1, NULL);
+
+    struct discord_create_guild_application_command params_2 = {
+        .name = "add", .description = "Add command!"};
+
+    discord_create_guild_application_command(client, event->application->id,
+                                             GUILD_ID, &params_2, NULL);
+
     (void)client;
     log_info("Cog-Bot succesfully connected to Discord as %s#%s!",
              event->user->username, event->user->discriminator);
+}
+
+int parse_add_args(struct PR *pr, char *content) {
+    int cont_index = 0;
+    int buf_jndex = 0;
+    int write_kndex = 0;
+
+    char buff[20];
+    char arr[5][20];
+
+    while (content[cont_index] != '\0') {
+        if (content[cont_index] == ' ') {
+            // Word ended, clean up and copy to array
+            buff[buf_jndex] = '\0';
+            strcpy(arr[write_kndex], buff);
+            write_kndex++;
+            buf_jndex = 0;
+        } else {
+            // Still in word, add content char to buff
+            buff[buf_jndex] = content[cont_index];
+            buf_jndex++;
+        }
+        cont_index++;
+    }
+
+    // Deal with the last copy of buff to arr
+    buff[buf_jndex] = '\0';
+    strcpy(arr[write_kndex], buff);
+
+    strcpy(pr->name, arr[0]);
+    strcpy(pr->exercise, arr[1]);
+    sscanf(arr[2], "%lf", &pr->weight);
+    sscanf(arr[3], "%d", &pr->reps);
 }
 
 void on_interaction(struct discord *client,
@@ -138,6 +185,10 @@ void on_interaction(struct discord *client,
                 &(struct discord_interaction_callback_data){.content = "pong"}};
         discord_create_interaction_response(client, event->id, event->token,
                                             &params, NULL);
+    } else if (strcmp(event->data->name, "add") == 0) {
+        struct PR pr;
+        parse_add_args(&pr, "Jake Bench 135 10");
+		print_pr(&pr);
     }
 }
 
@@ -168,7 +219,6 @@ int main() {
     struct PRS prs;
     prs.index = 0;
 
-    add(db, "Jake", "Squat", 245, 10);
     get(db, &prs, "Jake");
     print_prs(&prs);
 
@@ -179,6 +229,5 @@ int main() {
 
     sqlite3_close(db);
 
-    printf("We Go Jim!\n");
     return 0;
 }

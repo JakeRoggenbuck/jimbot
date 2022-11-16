@@ -9,6 +9,10 @@
 
 #define GUILD_ID 709849079315955733
 
+typedef struct discord_create_guild_application_command command;
+
+sqlite3 *DB;
+
 struct PR {
     char name[100];
     char exercise[100];
@@ -64,7 +68,7 @@ static int callback(void *data, int argc, char **argv, char **az_col_name) {
     return 0;
 }
 
-int create_database_table(sqlite3 *db) {
+int create_database_table() {
     int rc;
     char *error_message;
     char *sql = "CREATE TABLE PRS("
@@ -74,7 +78,7 @@ int create_database_table(sqlite3 *db) {
                 "WEIGHT         REAL    NOT NULL,"
                 "REPS        	INT		NOT NULL);";
 
-    rc = sqlite3_exec(db, sql, callback, 0, &error_message);
+    rc = sqlite3_exec(DB, sql, callback, 0, &error_message);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "SQL error: %s\n", error_message);
         sqlite3_free(error_message);
@@ -84,7 +88,7 @@ int create_database_table(sqlite3 *db) {
     return !rc;
 }
 
-int add(sqlite3 *db, char *name, char *exercise, double weight, int reps) {
+int add(struct PR *pr) {
     int rc;
     char *error_message;
     char sql[300];
@@ -92,9 +96,9 @@ int add(sqlite3 *db, char *name, char *exercise, double weight, int reps) {
     sprintf(sql,
             "INSERT INTO PRS (ID,NAME,EXERCISE,WEIGHT,REPS) VALUES"
             "(NULL, '%s', '%s', %.2lf, %d);",
-            name, exercise, weight, reps);
+            pr->name, pr->exercise, pr->weight, pr->reps);
 
-    rc = sqlite3_exec(db, sql, callback, 0, &error_message);
+    rc = sqlite3_exec(DB, sql, callback, 0, &error_message);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "SQL error: %s\n", error_message);
         sqlite3_free(error_message);
@@ -104,14 +108,14 @@ int add(sqlite3 *db, char *name, char *exercise, double weight, int reps) {
     return !rc;
 }
 
-int get(sqlite3 *db, struct PRS *prs, char *name) {
+int get(struct PRS *prs, char *name) {
     int rc;
     char *error_message;
     char sql[300];
 
     sprintf(sql, "SELECT * FROM PRS WHERE NAME='%s'", name);
 
-    rc = sqlite3_exec(db, sql, get_callback, (void *)prs, &error_message);
+    rc = sqlite3_exec(DB, sql, get_callback, (void *)prs, &error_message);
 
     if (rc != SQLITE_OK) {
         fprintf(stderr, "SQL error: %s\n", error_message);
@@ -122,25 +126,29 @@ int get(sqlite3 *db, struct PRS *prs, char *name) {
     return !rc;
 }
 
+/* Abstraction for creating a command struct */
+void register_command(struct discord *client, command *c,
+                      const struct discord_ready *event) {
+    discord_create_guild_application_command(client, event->application->id,
+                                             GUILD_ID, c, NULL);
+}
+
 void on_ready(struct discord *client, const struct discord_ready *event) {
-    struct discord_create_guild_application_command params_1 = {
-        .name = "ping", .description = "Ping command!"};
+    command ping_cmd = {.name = "ping", .description = "Ping command!"};
+    command add_cmd = {.name = "add", .description = "Add command!"};
+    command get_cmd = {.name = "get", .description = "Get command!"};
 
-    discord_create_guild_application_command(client, event->application->id,
-                                             GUILD_ID, &params_1, NULL);
-
-    struct discord_create_guild_application_command params_2 = {
-        .name = "add", .description = "Add command!"};
-
-    discord_create_guild_application_command(client, event->application->id,
-                                             GUILD_ID, &params_2, NULL);
+    register_command(client, &ping_cmd, event);
+    register_command(client, &add_cmd, event);
+    register_command(client, &get_cmd, event);
 
     (void)client;
     log_info("Cog-Bot succesfully connected to Discord as %s#%s!",
              event->user->username, event->user->discriminator);
 }
 
-int parse_add_args(struct PR *pr, char *content) {
+/* Turn a content like "Jake Bench 135 10" into a PR struct */
+void parse_add_args(struct PR *pr, char *content) {
     int cont_index = 0;
     int buf_jndex = 0;
     int write_kndex = 0;
@@ -173,61 +181,71 @@ int parse_add_args(struct PR *pr, char *content) {
     sscanf(arr[3], "%d", &pr->reps);
 }
 
+/* Send a message in the same channel where the event happened */
+void respond(struct discord *client, char *message,
+             const struct discord_interaction *event) {
+    // Create a response
+    struct discord_interaction_response params = {
+        .type = DISCORD_INTERACTION_CHANNEL_MESSAGE_WITH_SOURCE,
+        .data =
+            &(struct discord_interaction_callback_data){.content = message}};
+    // Send the response
+    discord_create_interaction_response(client, event->id, event->token,
+                                        &params, NULL);
+}
+
 void on_interaction(struct discord *client,
                     const struct discord_interaction *event) {
     if (event->type != DISCORD_INTERACTION_APPLICATION_COMMAND)
-        return; /* return if interaction isn't a slash command */
+        // return if interaction isn't a slash command
+        return;
 
-    if (strcmp(event->data->name, "ping") == 0) {
-        struct discord_interaction_response params = {
-            .type = DISCORD_INTERACTION_CHANNEL_MESSAGE_WITH_SOURCE,
-            .data =
-                &(struct discord_interaction_callback_data){.content = "pong"}};
-        discord_create_interaction_response(client, event->id, event->token,
-                                            &params, NULL);
-    } else if (strcmp(event->data->name, "add") == 0) {
+    char *command_name = event->data->name;
+    if (strcmp(command_name, "ping") == 0) {
+        respond(client, "pong", event);
+    } else if (strcmp(command_name, "add") == 0) {
         struct PR pr;
-        parse_add_args(&pr, "Jake Bench 135 10");
-		print_pr(&pr);
+        char *arg = "Jake Bench 135 10";
+        parse_add_args(&pr, arg);
+        print_pr(&pr);
+        respond(client, arg, event);
+    } else if (strcmp(command_name, "get") == 0) {
+        struct PRS prs;
+        prs.index = 0;
+        get(&prs, "Jake");
+        print_prs(&prs);
+        respond(client, "You said get!", event);
     }
 }
 
 int main() {
-    sqlite3 *db;
     int rc;
     char database_name[] = "test.db";
 
     bool exist_before_connect = file_exists(database_name);
-    rc = sqlite3_open(database_name, &db);
+    rc = sqlite3_open(database_name, &DB);
 
     if (rc) {
-        printf("Can't open database: %s\n", sqlite3_errmsg(db));
+        printf("Can't open database: %s\n", sqlite3_errmsg(DB));
         return 1;
     } else {
         printf("Opened database successfully.\n");
     }
 
     if (!exist_before_connect) {
-        if (!create_database_table(db)) {
+        if (!create_database_table()) {
             printf("Could not create table.\n");
             return 1;
         }
-
-        add(db, "Jake", "Bench", 135, 10);
     }
-
-    struct PRS prs;
-    prs.index = 0;
-
-    get(db, &prs, "Jake");
-    print_prs(&prs);
 
     struct discord *client = discord_config_init("config.json");
     discord_set_on_ready(client, &on_ready);
+
     discord_set_on_interaction_create(client, &on_interaction);
     discord_run(client);
 
-    sqlite3_close(db);
+    sqlite3_close(DB);
 
     return 0;
 }

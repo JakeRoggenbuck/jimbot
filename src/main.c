@@ -4,6 +4,7 @@
 #include <sqlite3.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
@@ -26,12 +27,39 @@ struct PRS {
 };
 
 void print_pr(struct PR *pr) {
-    printf("%s %s %lf %d\n", pr->name, pr->exercise, pr->weight, pr->reps);
+    printf("%s %s %.1lf %d\n", pr->name, pr->exercise, pr->weight, pr->reps);
+}
+
+void sprint_pr(char *str, struct PR *pr) {
+    sprintf(str, "%s %s %.1lf %d\n", pr->name, pr->exercise, pr->weight,
+            pr->reps);
 }
 
 void print_prs(struct PRS *prs) {
     for (int i = 0; i < prs->index; i++) {
         print_pr(&prs->prs[i]);
+    }
+}
+
+void sprint_prs(char *all, struct PRS *prs) {
+    int index = 0;
+
+    // Loop through each PR
+    for (int i = 0; i < prs->index; i++) {
+        // Create buf buffer for single PR
+        char bufarr[100];
+        char *buf = &(bufarr[0]);
+
+        sprint_pr(buf, &prs->prs[i]);
+
+        // Go though each char in buf
+        while (*buf) {
+            // write single char to all of index
+            all[index] = *buf;
+            index++;
+            // inc buf pointer to be next char
+            buf++;
+        }
     }
 }
 
@@ -147,6 +175,13 @@ void on_ready(struct discord *client, const struct discord_ready *event) {
              event->user->username, event->user->discriminator);
 }
 
+void fill_pr(struct PR *pr, char **arr) {
+    strcpy(pr->name, arr[0]);
+    strcpy(pr->exercise, arr[1]);
+    sscanf(arr[2], "%lf", &pr->weight);
+    sscanf(arr[3], "%d", &pr->reps);
+}
+
 /* Turn a content like "Jake Bench 135 10" into a PR struct */
 void parse_add_args(struct PR *pr, char *content) {
     int cont_index = 0;
@@ -174,11 +209,7 @@ void parse_add_args(struct PR *pr, char *content) {
     // Deal with the last copy of buff to arr
     buff[buf_jndex] = '\0';
     strcpy(arr[write_kndex], buff);
-
-    strcpy(pr->name, arr[0]);
-    strcpy(pr->exercise, arr[1]);
-    sscanf(arr[2], "%lf", &pr->weight);
-    sscanf(arr[3], "%d", &pr->reps);
+    fill_pr(pr, arr);
 }
 
 /* Send a message in the same channel where the event happened */
@@ -205,16 +236,21 @@ void on_interaction(struct discord *client,
         respond(client, "pong", event);
     } else if (strcmp(command_name, "add") == 0) {
         struct PR pr;
-        char *arg = "Jake Bench 135 10";
-        parse_add_args(&pr, arg);
-        print_pr(&pr);
+
+        char **args = event->data->values->strings->array;
+        int size = event->data->values->strings->size;
+        fill_pr(pr, args);
+
+        add(&pr);
         respond(client, arg, event);
     } else if (strcmp(command_name, "get") == 0) {
         struct PRS prs;
         prs.index = 0;
+
+        char all[1000];
         get(&prs, "Jake");
-        print_prs(&prs);
-        respond(client, "You said get!", event);
+        sprint_prs(all, &prs);
+        respond(client, all, event);
     }
 }
 
